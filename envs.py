@@ -28,12 +28,26 @@ try:
 except ImportError:
     pass
 
+try:
+    from osim.env import ProstheticsEnv, Arm2DEnv, L2RunEnv
+except ImportError:
+    pass
+
 
 def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
     def _thunk():
         if env_id.startswith("dm"):
             _, domain, task = env_id.split('.')
             env = dm_control2gym.make(domain_name=domain, task_name=task)
+        elif env_id.startswith("osim"):
+            # https://github.com/stanfordnmbl/osim-rl
+            _, task = env_id.split('.')
+            if task == "Prosthetics":
+                env = ProstheticsEnv(visualize=False, integrator_accuracy=1e-4)
+            elif task == "Arm2D":
+                env = Arm2DEnv(visualize=False, integrator_accuracy=1e-4)
+            else:  # task == "L2Run"
+                env = L2RunEnv(visualize=False, integrator_accuracy=1e-4)
         else:
             env = gym.make(env_id)
         is_atari = hasattr(gym.envs, 'atari') and isinstance(
