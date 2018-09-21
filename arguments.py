@@ -37,6 +37,20 @@ def get_args():
                         help='number of batches for ppo (default: 32)')
     parser.add_argument('--clip-param', type=float, default=0.2,
                         help='ppo clip parameter (default: 0.2)')
+    parser.add_argument('--sil-update-ratio', type=float, default=4.0,
+                        help='sil off-policy updates per on-policy updates (default: 4.0)')
+    parser.add_argument('--sil-epochs', type=int, default=1,
+                        help='number of sil epochs (default: 1)')
+    parser.add_argument('--sil-batch-size', type=int, default=512,
+                        help='sil batch size (default: 512)')
+    parser.add_argument('--sil-alpha', type=float, default=0.6,
+                        help='sil replay priority alpha, priority queue disabled if 0. (default: 0.6)')
+    parser.add_argument('--sil-beta', type=float, default=0.1,
+                        help='sil replay priority beta, importance sampling weights disabled if 0. (default: 0.1)')
+    parser.add_argument('--sil-entropy-coef', type=float, default=0.01,
+                        help='entropy term coefficient (default: 0.0)')
+    parser.add_argument('--sil-value-loss-coef', type=float, default=0.05,
+                        help='value loss coefficient (default: 0.5)')
     parser.add_argument('--log-interval', type=int, default=10,
                         help='log interval, one log per n updates (default: 10)')
     parser.add_argument('--save-interval', type=int, default=100,

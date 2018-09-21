@@ -15,13 +15,14 @@ import algo
 from arguments import get_args
 from envs import make_vec_envs
 from model import Policy
-from storage import RolloutStorage
+from rollout_storage import RolloutStorage
+from replay_storage import ReplayStorage
 from utils import get_vec_normalize
 from visualize import visdom_plot
 
 args = get_args()
 
-assert args.algo in ['a2c', 'ppo', 'acktr']
+assert args.algo in ['a2c', 'a2c-sil', 'ppo', 'ppo-sil', 'acktr']
 if args.recurrent_policy:
     assert args.algo in ['a2c', 'ppo'], \
         'Recurrent policy is not implemented for ACKTR'
@@ -65,12 +66,12 @@ def main():
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
-    if args.algo == 'a2c':
+    if args.algo.startswith('a2c'):
         agent = algo.A2C_ACKTR(actor_critic, args.value_loss_coef,
                                args.entropy_coef, lr=args.lr,
                                eps=args.eps, alpha=args.alpha,
                                max_grad_norm=args.max_grad_norm)
-    elif args.algo == 'ppo':
+    elif args.algo.startswith('ppo'):
         agent = algo.PPO(actor_critic, args.clip_param, args.ppo_epoch, args.num_mini_batch,
                          args.value_loss_coef, args.entropy_coef, lr=args.lr,
                                eps=args.eps,
@@ -78,6 +79,27 @@ def main():
     elif args.algo == 'acktr':
         agent = algo.A2C_ACKTR(actor_critic, args.value_loss_coef,
                                args.entropy_coef, acktr=True)
+
+    if args.algo.endswith('sil'):
+        agent = algo.SIL(
+            agent,
+            update_ratio=args.sil_update_ratio,
+            epochs=args.sil_epochs,
+            batch_size=args.sil_batch_size,
+            beta=args.sil_beta,
+            value_loss_coef=args.sil_value_loss_coef,
+            entropy_coef=args.sil_entropy_coef)
+        replay = ReplayStorage(
+            10000,
+            num_processes=args.num_processes,
+            gamma=args.gamma,
+            prio_alpha=args.sil_alpha,
+            obs_shape=envs.observation_space.shape,
+            action_space=envs.action_space,
+            recurrent_hidden_state_size=actor_critic.recurrent_hidden_state_size,
+            device=device)
+    else:
+        replay = None
 
     rollouts = RolloutStorage(args.num_steps, args.num_processes,
                         envs.observation_space.shape, envs.action_space,
@@ -110,6 +132,13 @@ def main():
             masks = torch.FloatTensor([[0.0] if done_ else [1.0]
                                        for done_ in done])
             rollouts.insert(obs, recurrent_hidden_states, action, action_log_prob, value, reward, masks)
+            if replay is not None:
+                replay.insert(
+                    rollouts.obs[step],
+                    rollouts.recurrent_hidden_states[step],
+                    action,
+                    reward,
+                    done)
 
         with torch.no_grad():
             next_value = actor_critic.get_value(rollouts.obs[-1],
@@ -118,7 +147,7 @@ def main():
 
         rollouts.compute_returns(next_value, args.use_gae, args.gamma, args.tau)
 
-        value_loss, action_loss, dist_entropy = agent.update(rollouts)
+        value_loss, action_loss, dist_entropy = agent.update(rollouts, j, replay)
 
         rollouts.after_update()
 
