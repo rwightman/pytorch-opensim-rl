@@ -30,6 +30,7 @@ except ImportError:
 
 try:
     from osim.env import ProstheticsEnv, Arm2DEnv, L2RunEnv
+    from my_prosthetics_env import MyProstheticsEnv
 except ImportError:
     pass
 
@@ -43,7 +44,7 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
             # https://github.com/stanfordnmbl/osim-rl
             _, task = env_id.split('.')
             if task == "Prosthetics":
-                env = ProstheticsEnv(visualize=False, integrator_accuracy=1e-4)
+                env = MyProstheticsEnv(visualize=False, integrator_accuracy=1e-4)
             elif task == "Arm2D":
                 env = Arm2DEnv(visualize=False, integrator_accuracy=1e-4)
             else:  # task == "L2Run"

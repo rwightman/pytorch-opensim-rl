@@ -20,6 +20,7 @@ class SIL:
         self.beta = beta  # FIXME should be on schedule?
         self.value_loss_coef = value_loss_coef
         self.entropy_coef = entropy_coef
+        self.loss_weight = 0.1
         self.avg_loss_by_valid_samples = True
 
         self.algo = algo
@@ -90,6 +91,8 @@ class SIL:
                 loss = value_loss * self.value_loss_coef + action_loss
                 if self.entropy_coef:
                     loss -= dist_entropy * self.entropy_coef
+
+                loss *= self.loss_weight
 
                 self.algo.optimizer.zero_grad()
 
