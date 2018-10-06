@@ -62,7 +62,9 @@ def main():
     envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
                         args.gamma, args.log_dir, args.add_timestep, device, False)
 
-    actor_critic = Policy(envs.observation_space.shape, envs.action_space,
+    actor_critic = Policy(
+        envs.observation_space.shape, envs.action_space,
+        dist_output_fn=torch.nn.functional.tanh,
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
@@ -110,6 +112,7 @@ def main():
     rollouts.to(device)
 
     episode_rewards = deque(maxlen=10)
+    original_rewards = deque(maxlen=10)
 
     start = time.time()
     for j in range(num_updates):
@@ -127,6 +130,8 @@ def main():
             for info in infos:
                 if 'episode' in info.keys():
                     episode_rewards.append(info['episode']['r'])
+                    if 'or' in info['episode']:
+                        original_rewards.append(info['episode']['or'])
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0]
@@ -172,7 +177,7 @@ def main():
 
         if j % args.log_interval == 0 and len(episode_rewards) > 1:
             end = time.time()
-            print("Updates {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n".
+            print("Updates {}, num timesteps {}, FPS {} \n Last {} episodes: mean/med {:.1f}/{:.1f}, min/max reward {:.2f}/{:.2f}".
                 format(j, total_num_steps,
                        int(total_num_steps / (end - start)),
                        len(episode_rewards),
@@ -180,7 +185,15 @@ def main():
                        np.median(episode_rewards),
                        np.min(episode_rewards),
                        np.max(episode_rewards), dist_entropy,
-                       value_loss, action_loss))
+                       value_loss, action_loss), end='')
+            if len(original_rewards):
+                print(", original {:.1f}/{:.1f}, {:.1f}/{:.1f}".format(
+                    np.mean(original_rewards),
+                    np.median(original_rewards),
+                    np.min(original_rewards),
+                    np.max(original_rewards)
+                ), end='')
+            print()
 
         if (args.eval_interval is not None
                 and len(episode_rewards) > 1

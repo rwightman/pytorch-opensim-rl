@@ -15,23 +15,29 @@ parser.add_argument('--log-interval', type=int, default=10,
                     help='log interval, one log per n updates (default: 10)')
 parser.add_argument('--env-name', default='PongNoFrameskip-v4',
                     help='environment to train on (default: PongNoFrameskip-v4)')
-parser.add_argument('--load-dir', default='./trained_models/',
+parser.add_argument('--load-path', default='./trained_models/',
                     help='directory to save agent logs (default: ./trained_models/)')
 parser.add_argument('--add-timestep', action='store_true', default=False,
                     help='add timestep to observations')
 args = parser.parse_args()
 
 env = make_vec_envs(args.env_name, args.seed + 1000, 1,
-                            None, None, args.add_timestep, device='cpu')
+                    None, None, args.add_timestep, device='cpu',
+                    allow_early_resets=False,
+                    visualize=True)
 
 # Get a render function
 render_func = get_render_func(env)
 
 # We need to use the same statistics for normalization as used in training
-actor_critic, ob_rms = \
-            torch.load(os.path.join(args.load_dir, args.env_name + ".pt"))
+if os.path.isdir(args.load_path):
+    load_path = os.path.join(args.load_path, args.env_name + ".pt")
+else:
+    load_path = args.load_path
+actor_critic, ob_rms = torch.load(load_path)
+actor_critic.eval()
 
-vec_norm = get_vec_normalize(envs)
+vec_norm = get_vec_normalize(env)
 if vec_norm is not None:
     vec_norm.eval()
     vec_norm.ob_rms = ob_rms

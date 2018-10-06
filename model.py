@@ -12,7 +12,7 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base_kwargs=None):
+    def __init__(self, obs_shape, action_space, dist_output_fn=None, base_kwargs=None):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
@@ -29,7 +29,7 @@ class Policy(nn.Module):
             self.dist = Categorical(self.base.output_size, num_outputs)
         elif action_space.__class__.__name__ == "Box":
             num_outputs = action_space.shape[0]
-            self.dist = DiagGaussian(self.base.output_size, num_outputs)
+            self.dist = DiagGaussian(self.base.output_size, num_outputs, dist_output_fn)
         else:
             raise NotImplementedError
 
@@ -131,7 +131,7 @@ class NNBase(nn.Module):
 
 
 class CNNBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=512):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=512, output_layer=nn.ReLU):
         super(CNNBase, self).__init__(recurrent, hidden_size, hidden_size)
 
         init_ = lambda m: init(m,
@@ -141,14 +141,14 @@ class CNNBase(NNBase):
 
         self.main = nn.Sequential(
             init_(nn.Conv2d(num_inputs, 32, 8, stride=4)),
-            nn.ReLU(),
+            output_layer(),
             init_(nn.Conv2d(32, 64, 4, stride=2)),
-            nn.ReLU(),
+            output_layer(),
             init_(nn.Conv2d(64, 32, 3, stride=1)),
-            nn.ReLU(),
+            output_layer(),
             Flatten(),
             init_(nn.Linear(32 * 7 * 7, hidden_size)),
-            nn.ReLU()
+            output_layer()
         )
 
         init_ = lambda m: init(m,
@@ -169,7 +169,7 @@ class CNNBase(NNBase):
 
 
 class MLPBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=64):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=64, activation_layer=nn.Tanh):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
@@ -180,17 +180,17 @@ class MLPBase(NNBase):
             lambda x: nn.init.constant_(x, 0))
 
         self.actor = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh()
+            init_(nn.Linear(num_inputs, hidden_size*2)),
+            activation_layer(),
+            init_(nn.Linear(hidden_size*2, hidden_size)),
+            activation_layer()
         )
 
         self.critic = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh()
+            init_(nn.Linear(num_inputs, hidden_size*2)),
+            activation_layer(),
+            init_(nn.Linear(hidden_size*2, hidden_size)),
+            activation_layer()
         )
 
         self.critic_linear = init_(nn.Linear(hidden_size, 1))

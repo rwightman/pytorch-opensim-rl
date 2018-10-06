@@ -35,7 +35,7 @@ except ImportError:
     pass
 
 
-def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
+def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kwargs):
     def _thunk():
         if env_id.startswith("dm"):
             _, domain, task = env_id.split('.')
@@ -44,11 +44,11 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
             # https://github.com/stanfordnmbl/osim-rl
             _, task = env_id.split('.')
             if task == "Prosthetics":
-                env = MyProstheticsEnv(visualize=False, integrator_accuracy=1e-4)
+                env = MyProstheticsEnv(integrator_accuracy=1e-4, **kwargs)
             elif task == "Arm2D":
-                env = Arm2DEnv(visualize=False, integrator_accuracy=1e-4)
+                env = Arm2DEnv(integrator_accuracy=1e-4, **kwargs)
             else:  # task == "L2Run"
-                env = L2RunEnv(visualize=False, integrator_accuracy=1e-4)
+                env = L2RunEnv(integrator_accuracy=1e-4, **kwargs)
         else:
             env = gym.make(env_id)
         is_atari = hasattr(gym.envs, 'atari') and isinstance(
@@ -65,6 +65,7 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
 
         if log_dir is not None:
             env = bench.Monitor(env, os.path.join(log_dir, str(rank)),
+                                info_keywords=('or',),
                                 allow_early_resets=allow_early_resets)
 
         if is_atari:
@@ -80,8 +81,8 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets):
     return _thunk
 
 def make_vec_envs(env_name, seed, num_processes, gamma, log_dir, add_timestep,
-                  device, allow_early_resets, num_frame_stack=None):
-    envs = [make_env(env_name, seed, i, log_dir, add_timestep, allow_early_resets)
+                  device, allow_early_resets=True, num_frame_stack=None, **kwargs):
+    envs = [make_env(env_name, seed, i, log_dir, add_timestep, allow_early_resets, **kwargs)
             for i in range(num_processes)]
 
     if len(envs) > 1:
