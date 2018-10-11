@@ -37,10 +37,12 @@ except ImportError:
 
 def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kwargs):
     def _thunk():
+        info_keywords = ()
         if env_id.startswith("dm"):
             _, domain, task = env_id.split('.')
             env = dm_control2gym.make(domain_name=domain, task_name=task)
         elif env_id.startswith("osim"):
+            info_keywords = ('or',)
             # https://github.com/stanfordnmbl/osim-rl
             _, task = env_id.split('.')
             if task == "Prosthetics":
@@ -65,7 +67,7 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kw
 
         if log_dir is not None:
             env = bench.Monitor(env, os.path.join(log_dir, str(rank)),
-                                info_keywords=('or',),
+                                info_keywords=info_keywords,
                                 allow_early_resets=allow_early_resets)
 
         if is_atari:
