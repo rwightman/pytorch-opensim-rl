@@ -64,7 +64,7 @@ def main():
 
     actor_critic = Policy(
         envs.observation_space.shape, envs.action_space,
-        dist_output_fn=torch.nn.functional.tanh,
+        dist_output_fn=None,
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 

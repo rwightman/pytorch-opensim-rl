@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 from envs import VecNormalize
 
@@ -50,3 +51,52 @@ def init(module, weight_init, bias_init, gain=1):
 def init_normc_(weight, gain=1):
     weight.normal_(0, 1)
     weight *= gain / torch.sqrt(weight.pow(2).sum(1, keepdim=True))
+
+
+
+class _Schedule:
+    def __init__(self, initial_value, gamma=0.1, last_epoch=-1):
+        self.gamma = gamma
+        self.initial_value = initial_value
+        self.last_epoch = last_epoch
+        self.step()
+
+    def get(self):
+        return self.initial_value
+
+    def step(self, epoch=None):
+        if epoch is None:
+            self.last_epoch += 1
+        else:
+            self.last_epoch = epoch
+        return self.get()
+
+
+class StepSchedule(_Schedule):
+
+    def __init__(self, initial_value, step_size, gamma=0.1, last_epoch=-1):
+        self.step_size = step_size
+        super(StepSchedule, self).__init__(initial_value, gamma, last_epoch)
+
+    def get(self):
+        return self.initial_value  * self.gamma ** (self.last_epoch // self.step_size)
+
+
+class ExpSchedule(_Schedule):
+
+    def __init__(self, initial_value, step_size, gamma=0.1, last_epoch=-1):
+        self.step_size = step_size
+        super(ExpSchedule, self).__init__(initial_value, gamma, last_epoch)
+
+    def get(self):
+        return self.initial_value  * self.gamma ** (self.last_epoch / self.step_size)
+
+
+class NatExpSchedule(_Schedule):
+
+    def __init__(self, initial_value, step_size, gamma=0.1, last_epoch=-1):
+        self.step_size = step_size
+        super(NatExpSchedule, self).__init__(initial_value, gamma, last_epoch)
+
+    def get(self):
+        return self.initial_value * math.exp(-self.gamma * (self.last_epoch / self.step_size))
