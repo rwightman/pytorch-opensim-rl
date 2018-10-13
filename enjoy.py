@@ -1,6 +1,6 @@
 import argparse
 import os
-
+import gym
 import numpy as np
 import torch
 
@@ -15,10 +15,12 @@ parser.add_argument('--log-interval', type=int, default=10,
                     help='log interval, one log per n updates (default: 10)')
 parser.add_argument('--env-name', default='PongNoFrameskip-v4',
                     help='environment to train on (default: PongNoFrameskip-v4)')
-parser.add_argument('--load-path', default='./trained_models/',
-                    help='directory to save agent logs (default: ./trained_models/)')
+parser.add_argument('--load-path', default='',
+                    help='directory to save agent logs (default: ')
 parser.add_argument('--add-timestep', action='store_true', default=False,
                     help='add timestep to observations')
+parser.add_argument('--clip-action', action='store_true', default=False,
+                    help='clip actions')
 args = parser.parse_args()
 
 env = make_vec_envs(args.env_name, args.seed + 1000, 1,
@@ -30,11 +32,7 @@ env = make_vec_envs(args.env_name, args.seed + 1000, 1,
 render_func = get_render_func(env)
 
 # We need to use the same statistics for normalization as used in training
-if os.path.isdir(args.load_path):
-    load_path = os.path.join(args.load_path, args.env_name + ".pt")
-else:
-    load_path = args.load_path
-actor_critic, ob_rms = torch.load(load_path)
+actor_critic, ob_rms = torch.load(args.load_path)
 actor_critic.eval()
 
 vec_norm = get_vec_normalize(env)
@@ -63,8 +61,15 @@ while True:
         value, action, _, recurrent_hidden_states = actor_critic.act(
             obs, recurrent_hidden_states, masks, deterministic=True)
 
+    if args.clip_action and isinstance(env.action_space, gym.spaces.Box):
+        clipped_action = torch.max(torch.min(
+            action, torch.from_numpy(env.action_space.high)),
+            torch.from_numpy(env.action_space.low))
+    else:
+        clipped_action = action
+
     # Obser reward and next obs
-    obs, reward, done, _ = env.step(action)
+    obs, reward, done, _ = env.step(clipped_action)
 
     masks.fill_(0.0 if done else 1.0)
 
