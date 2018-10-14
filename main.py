@@ -2,6 +2,7 @@ import copy
 import glob
 import os
 import time
+import datetime
 from collections import deque
 
 import gym
@@ -33,34 +34,35 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
-try:
-    os.makedirs(args.log_dir)
-except OSError:
-    files = glob.glob(os.path.join(args.log_dir, '*.monitor.csv'))
-    for f in files:
-        os.remove(f)
 
-eval_log_dir = args.log_dir + "_eval"
+def setup_dirs(experiment_name, log_dir, save_dir):
+    log_dir = os.path.join(log_dir, experiment_name)
+    os.makedirs(log_dir, exist_ok=True)
 
-try:
-    os.makedirs(eval_log_dir)
-except OSError:
-    files = glob.glob(os.path.join(eval_log_dir, '*.monitor.csv'))
-    for f in files:
-        os.remove(f)
+    eval_log_dir = args.log_dir + "_eval"
+    os.makedirs(eval_log_dir,  exist_ok=True)
+
+    save_dir = os.path.join(save_dir, experiment_name)
+    os.makedirs(save_dir, exist_ok=True)
+
+    return log_dir, eval_log_dir, save_dir
 
 
 def main():
     torch.set_num_threads(1)
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
+    experiment_name = args.env_name + '-' + args.algo + '-' + datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
+    log_dir, eval_log_dir, save_dir = setup_dirs(experiment_name, args.log_dir, args.save_dir)
+
     if args.vis:
         from visdom import Visdom
         viz = Visdom(port=args.port)
         win = None
 
-    envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
-                        args.gamma, args.log_dir, args.add_timestep, device, False)
+    envs = make_vec_envs(
+        args.env_name, args.seed, args.num_processes,
+        args.gamma, log_dir, args.add_timestep, device, False)
 
     actor_critic = Policy(
         envs.observation_space.shape, envs.action_space,
@@ -76,8 +78,8 @@ def main():
     elif args.algo.startswith('ppo'):
         agent = algo.PPO(actor_critic, args.clip_param, args.ppo_epoch, args.num_mini_batch,
                          args.value_loss_coef, args.entropy_coef, lr=args.lr,
-                               eps=args.eps,
-                               max_grad_norm=args.max_grad_norm)
+                         eps=args.eps,
+                         max_grad_norm=args.max_grad_norm)
     elif args.algo == 'acktr':
         agent = algo.A2C_ACKTR(actor_critic, args.value_loss_coef,
                                args.entropy_coef, acktr=True)
@@ -112,26 +114,34 @@ def main():
     rollouts.to(device)
 
     episode_rewards = deque(maxlen=10)
-    original_rewards = deque(maxlen=10)
+    benchmark_rewards = deque(maxlen=10)
 
     start = time.time()
     for j in range(num_updates):
         for step in range(args.num_steps):
             # Sample actions
             with torch.no_grad():
+                # sample actions
                 value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
                         rollouts.obs[step],
                         rollouts.recurrent_hidden_states[step],
                         rollouts.masks[step])
 
-            # Obser reward and next obs
-            obs, reward, done, infos = envs.step(action)
+            if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
+                clipped_action = torch.max(
+                    torch.min(action, torch.from_numpy(envs.action_space.high).to(device)),
+                    torch.from_numpy(envs.action_space.low).to(device))
+            else:
+                clipped_action = action
+
+            # act in environment and observe
+            obs, reward, done, infos = envs.step(clipped_action)
 
             for info in infos:
                 if 'episode' in info.keys():
                     episode_rewards.append(info['episode']['r'])
-                    if 'or' in info['episode']:
-                        original_rewards.append(info['episode']['or'])
+                    if 'rb' in info['episode']:
+                        benchmark_rewards.append(info['episode']['rb'])
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0]
@@ -156,42 +166,26 @@ def main():
 
         rollouts.after_update()
 
-        if j % args.save_interval == 0 and args.save_dir != "":
-            save_path = os.path.join(args.save_dir, args.algo)
-            try:
-                os.makedirs(save_path)
-            except OSError:
-                pass
-
-            # A really ugly way to save a model to CPU
-            save_model = actor_critic
-            if args.cuda:
-                save_model = copy.deepcopy(actor_critic).cpu()
-
-            save_model = [save_model,
-                          getattr(get_vec_normalize(envs), 'ob_rms', None)]
-
-            torch.save(save_model, os.path.join(save_path, args.env_name + ".pt"))
-
         total_num_steps = (j + 1) * args.num_processes * args.num_steps
 
+        train_eprew = np.mean(episode_rewards)
         if j % args.log_interval == 0 and len(episode_rewards) > 1:
             end = time.time()
             print("Updates {}, num timesteps {}, FPS {} \n Last {} episodes: mean/med {:.1f}/{:.1f}, min/max reward {:.2f}/{:.2f}".
                 format(j, total_num_steps,
                        int(total_num_steps / (end - start)),
                        len(episode_rewards),
-                       np.mean(episode_rewards),
+                       train_eprew,
                        np.median(episode_rewards),
                        np.min(episode_rewards),
                        np.max(episode_rewards), dist_entropy,
                        value_loss, action_loss), end='')
-            if len(original_rewards):
-                print(", original {:.1f}/{:.1f}, {:.1f}/{:.1f}".format(
-                    np.mean(original_rewards),
-                    np.median(original_rewards),
-                    np.min(original_rewards),
-                    np.max(original_rewards)
+            if len(benchmark_rewards):
+                print(", benchmark {:.1f}/{:.1f}, {:.1f}/{:.1f}".format(
+                    np.mean(benchmark_rewards),
+                    np.median(benchmark_rewards),
+                    np.min(benchmark_rewards),
+                    np.max(benchmark_rewards)
                 ), end='')
             print()
 
@@ -219,8 +213,14 @@ def main():
                     _, action, _, eval_recurrent_hidden_states = actor_critic.act(
                         obs, eval_recurrent_hidden_states, eval_masks, deterministic=True)
 
-                # Obser reward and next obs
-                obs, reward, done, infos = eval_envs.step(action)
+                if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
+                    clipped_action = torch.max(
+                        torch.min(action, torch.from_numpy(envs.action_space.high).to(device)),
+                        torch.from_numpy(envs.action_space.low).to(device))
+                else:
+                    clipped_action = action
+
+                obs, reward, done, infos = eval_envs.step(clipped_action)
 
                 eval_masks = torch.FloatTensor([[0.0] if done_ else [1.0]
                                                 for done_ in done])
@@ -230,14 +230,27 @@ def main():
 
             eval_envs.close()
 
+            eval_eprew = np.mean(eval_episode_rewards)
             print(" Evaluation using {} episodes: mean reward {:.5f}\n".
-                format(len(eval_episode_rewards),
-                       np.mean(eval_episode_rewards)))
+                format(len(eval_episode_rewards), eval_eprew))
+
+        if j % args.save_interval == 0 and save_dir != "":
+            # A really ugly way to save a model to CPU
+            save_model = actor_critic
+            if args.cuda:
+                save_model = copy.deepcopy(actor_critic).cpu()
+
+            save_model = [save_model, getattr(get_vec_normalize(envs), 'ob_rms', None)]
+
+            ep_rewstr = ("%d" % train_eprew).replace("-", "n")
+            save_filename = os.path.join(save_dir, './checkpoint-%d-%s.pt' % (j, ep_rewstr))
+
+            torch.save(save_model, save_filename)
 
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
-                win = visdom_plot(viz, win, args.log_dir, args.env_name,
+                win = visdom_plot(viz, win, log_dir, args.env_name,
                                   args.algo, args.num_frames)
             except IOError:
                 pass

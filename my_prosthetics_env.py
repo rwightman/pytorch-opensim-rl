@@ -3,6 +3,8 @@ import random
 import numpy as np
 import math
 import os
+import time
+from collections import deque
 
 
 class MyProstheticsEnv(ProstheticsEnv):
@@ -14,8 +16,11 @@ class MyProstheticsEnv(ProstheticsEnv):
             difficulty=difficulty,
             seed=seed)
         if difficulty == 0:
-            self.time_limit = 600  # longer time limit to reduce likelihood of diving strategy
+            self.time_limit = 800  # longer time limit to reduce likelihood of diving strategy
         np.random.seed(seed)
+        self.step_times = deque(maxlen=100)
+        self.step_count = 0
+        self.debug = False
 
     ## Values in the observation vector
     # y, vx, vy, ax, ay, rz, vrz, arz of pelvis (10 values)
@@ -43,9 +48,8 @@ class MyProstheticsEnv(ProstheticsEnv):
             cur += state_desc["body_vel_rot"][body_part][2:]
             cur += state_desc["body_acc_rot"][body_part][2:]
             if body_part == "pelvis":
-                pelvis = cur
-                blorb = cur[1:2] + cur[3:]
-                res += blorb
+                pelvis = cur[1:2] + cur[3:]
+                res += pelvis
             else:
                 cur_upd = cur.copy()
                 cur_upd[:3] = [cur[i] - pelvis[i] for i in range(3)]
@@ -78,6 +82,10 @@ class MyProstheticsEnv(ProstheticsEnv):
             return 181
         return 167
 
+    def is_done(self):
+        state_desc = self.get_state_desc()
+        return state_desc["body_pos"]["pelvis"][1] < 0.6
+
     def my_reward_round1(self):
         state_desc = self.get_state_desc()
         prev_state_desc = self.get_prev_state_desc()
@@ -88,8 +96,13 @@ class MyProstheticsEnv(ProstheticsEnv):
         penalty += (state_desc["body_vel"]["pelvis"][0] - 3.0) ** 2
         penalty += (state_desc["body_vel"]["pelvis"][2]) ** 2
         penalty += np.sum(np.array(self.osim_model.get_activations()) ** 2) * 0.001
+        if state_desc["body_pos"]["pelvis"][1] < 0.65:
+            penalty += 10  # penalize falling more
 
-        return 10. - penalty
+        # Reward for not falling
+        reward = 10.0
+
+        return reward - penalty
 
     def my_reward_round2(self):
         state_desc = self.get_state_desc()
@@ -103,6 +116,8 @@ class MyProstheticsEnv(ProstheticsEnv):
         # No penalty for the vertical axis
         penalty += (state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0]) ** 2
         penalty += (state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2]) ** 2
+        if state_desc["body_pos"]["pelvis"][1] < 0.625:
+            penalty += 10  # penalize falling more
 
         # Reward for not falling
         reward = 10.0
@@ -146,17 +161,41 @@ class MyProstheticsEnv(ProstheticsEnv):
 
     def step(self, action, project=True):
         self.prev_state_desc = self.get_state_desc()
+
+        start_time = time.perf_counter()
         self.osim_model.actuate(action)
         self.osim_model.integrate()
+        step_time = time.perf_counter() - start_time
+
+        # track some step stats across resets
+        self.step_times.append(step_time)
+        self.step_count += 1
+
+        if self.debug and self.step_count % 1000 == 0:
+            step_mean = np.mean(self.step_times)
+            step_min = np.min(self.step_times)
+            step_max = np.max(self.step_times)
+            print('Steps {}, duration mean, min, max: {:.3f}, {:.3f}, {:.3f}'.format(
+                self.step_count, step_mean, step_min, step_max))
 
         if project:
             obs = self.get_observation()
         else:
             obs = self.get_state_desc()
 
-        done = self.is_done() or (self.osim_model.istep >= self.spec.timestep_limit)
+        reward = self.my_reward()
+        done = self.is_done() or self.osim_model.istep >= self.spec.timestep_limit
+        if not done:
+            # check if slow sim step, likely due to foot through ground plane
+            if step_time > 15.:
+                print("Terminating env on step {} due to large step time {:.3f}".format(
+                    self.osim_model.istep,
+                    step_time,
+                ))
+                done = True  # terminate early to avoid significant slowdowns
+                reward = -10  # penalize slow sim
 
-        return [obs, self.my_reward(), done, {'or': self.reward()}]
+        return [obs, reward, done, {'rb': self.reward()}]
 
     def seed(self, seed=None):
         random.seed(seed)

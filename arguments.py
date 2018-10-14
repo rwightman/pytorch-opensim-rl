@@ -37,6 +37,8 @@ def get_args():
                         help='number of batches for ppo (default: 32)')
     parser.add_argument('--clip-param', type=float, default=0.2,
                         help='ppo clip parameter (default: 0.2)')
+    parser.add_argument('--clip-action', action='store_true', default=False,
+                        help='clip actions')
     parser.add_argument('--sil-update-ratio', type=float, default=4.0,
                         help='sil off-policy updates per on-policy updates (default: 4.0)')
     parser.add_argument('--sil-epochs', type=int, default=1,
@@ -63,8 +65,8 @@ def get_args():
                         help='number of frames to train (default: 10e6)')
     parser.add_argument('--env-name', default='PongNoFrameskip-v4',
                         help='environment to train on (default: PongNoFrameskip-v4)')
-    parser.add_argument('--log-dir', default='/tmp/gym/',
-                        help='directory to save agent logs (default: /tmp/gym)')
+    parser.add_argument('--log-dir', default='/tmp/',
+                        help='directory to save agent logs (default: /tmp/)')
     parser.add_argument('--save-dir', default='./trained_models/',
                         help='directory to save agent logs (default: ./trained_models/)')
     parser.add_argument('--no-cuda', action='store_true', default=False,

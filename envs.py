@@ -5,13 +5,13 @@ import numpy as np
 import torch
 from gym.spaces.box import Box
 
-from baselines import bench
+#from baselines import bench
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.vec_env import VecEnvWrapper
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
 from baselines.common.vec_env.vec_normalize import VecNormalize as VecNormalize_
-
+from monitor import Monitor
 
 try:
     import dm_control2gym
@@ -42,7 +42,7 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kw
             _, domain, task = env_id.split('.')
             env = dm_control2gym.make(domain_name=domain, task_name=task)
         elif env_id.startswith("osim"):
-            info_keywords = ('or',)
+            info_keywords = ('rb',)
             # https://github.com/stanfordnmbl/osim-rl
             _, task = env_id.split('.')
             if task == "Prosthetics":
@@ -50,6 +50,7 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kw
             elif task == "Arm2D":
                 env = Arm2DEnv(integrator_accuracy=1e-4, **kwargs)
             else:  # task == "L2Run"
+                assert task == "L2Run"
                 env = L2RunEnv(integrator_accuracy=1e-4, **kwargs)
         else:
             env = gym.make(env_id)
@@ -66,9 +67,10 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kw
             env = AddTimestep(env)
 
         if log_dir is not None:
-            env = bench.Monitor(env, os.path.join(log_dir, str(rank)),
-                                info_keywords=info_keywords,
-                                allow_early_resets=allow_early_resets)
+            env = Monitor(
+                env, os.path.join(log_dir, str(rank)),
+                info_keywords=info_keywords,
+                allow_early_resets=allow_early_resets)
 
         if is_atari:
             env = wrap_deepmind(env)
@@ -82,8 +84,10 @@ def make_env(env_id, seed, rank, log_dir, add_timestep, allow_early_resets, **kw
 
     return _thunk
 
+
 def make_vec_envs(env_name, seed, num_processes, gamma, log_dir, add_timestep,
                   device, allow_early_resets=True, num_frame_stack=None, **kwargs):
+
     envs = [make_env(env_name, seed, i, log_dir, add_timestep, allow_early_resets, **kwargs)
             for i in range(num_processes)]
 
