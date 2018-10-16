@@ -38,9 +38,15 @@ class MyProstheticsEnv(ProstheticsEnv):
 
         if self.simple:
             pelvis = state_desc["body_pos"]["pelvis"][0:3]
-            pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
-            pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
-            res += pelvis[1:2] + pelvis_vel[:] + pelvis_acc[:]
+            #pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
+            #pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
+            res += pelvis[1:2] #+ pelvis_vel[:] + pelvis_acc[:]
+
+            for bp in ["talus_l", "pros_foot_r"]:
+                bp_pos = state_desc["body_pos"][bp]
+                bp_pos[0] = bp_pos[0] - pelvis[0]
+                bp_pos[2] = bp_pos[2] - pelvis[2]
+                res += bp_pos
         else:
             pelvis = None
             for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
