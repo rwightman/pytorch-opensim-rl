@@ -11,13 +11,17 @@ class Monitor(_Monitor):
             reset_keywords=reset_keywords, info_keywords=info_keywords)
         self.benchmark_rewards = []
         self.episode_benchmark_rewards = []
+        if 'rb' in info_keywords:
+            self.do_benchmark = True
+        else:
+            self.do_benchmark = False
 
     def reset_state(self):
         self.benchmark_rewards = []
         super(Monitor, self).reset_state()
 
     def update(self, ob, rew, done, info):
-        if 'rb' in info:
+        if self.do_benchmark and 'rb' in info:
             self.benchmark_rewards.append(info['rb'])
         self.rewards.append(rew)
         if done:
@@ -31,7 +35,8 @@ class Monitor(_Monitor):
                 "t": round(time.time() - self.tstart, 6)}
             for k in self.info_keywords:
                 epinfo[k] = info[k]
-            epinfo["rb"] = eprewb  # overwrite with episode benchmark
+            if self.do_benchmark:
+                epinfo["rb"] = eprewb  # overwrite with episode benchmark
             self.episode_benchmark_rewards.append(eprewb)
             self.episode_rewards.append(eprew)
             self.episode_lengths.append(eplen)

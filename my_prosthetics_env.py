@@ -10,6 +10,7 @@ from collections import deque
 class MyProstheticsEnv(ProstheticsEnv):
 
     def __init__(self, visualize=False, integrator_accuracy=1e-4, difficulty=0, seed=0):
+        self.simple = True
         super(MyProstheticsEnv, self).__init__(
             visualize=visualize,
             integrator_accuracy=integrator_accuracy,
@@ -34,27 +35,33 @@ class MyProstheticsEnv(ProstheticsEnv):
 
         # Augmented environment from the L2R challenge
         res = []
-        pelvis = None
 
-        for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
-            if self.prosthetic and body_part in ["toes_r", "talus_r"]:
-                res += [0] * 12
-                continue
-            cur = []
-            cur += state_desc["body_pos"][body_part][0:3]
-            cur += state_desc["body_vel"][body_part][0:3]
-            cur += state_desc["body_acc"][body_part][0:3]
-            cur += state_desc["body_pos_rot"][body_part][2:]
-            cur += state_desc["body_vel_rot"][body_part][2:]
-            cur += state_desc["body_acc_rot"][body_part][2:]
-            if body_part == "pelvis":
-                pelvis = cur[1:2] + cur[3:]
-                res += pelvis
-            else:
-                cur_upd = cur.copy()
-                cur_upd[:3] = [cur[i] - pelvis[i] for i in range(3)]
-                cur_upd[9:10] = [cur[i] - pelvis[i] for i in range(9, 10)]
-                res += cur_upd
+        if self.simple:
+            pelvis = state_desc["body_pos"]["pelvis"][0:3]
+            pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
+            pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
+            res += pelvis[1:2] + pelvis_vel[:] + pelvis_acc[:]
+        else:
+            pelvis = None
+            for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
+                if self.prosthetic and body_part in ["toes_r", "talus_r"]:
+                    #res += [0] * 12
+                    continue
+                cur = []
+                cur += state_desc["body_pos"][body_part][0:3]
+                cur += state_desc["body_vel"][body_part][0:3]
+                cur += state_desc["body_acc"][body_part][0:3]
+                cur += state_desc["body_pos_rqot"][body_part][2:]
+                cur += state_desc["body_vel_rot"][body_part][2:]
+                cur += state_desc["body_acc_rot"][body_part][2:]
+                if body_part == "pelvis":
+                    pelvis = cur.copy()
+                    res += pelvis[1:2] + pelvis[3:]
+                else:
+                    cur_upd = cur.copy()
+                    cur_upd[:3] = [cur[i] - pelvis[i] for i in range(3)]
+                    cur_upd[9:10] = [cur[i] - pelvis[i] for i in range(9, 10)]
+                    res += cur_upd
 
         for joint in ["ankle_l", "ankle_r", "back", "hip_l", "hip_r", "knee_l", "knee_r"]:
             res += state_desc["joint_pos"][joint]
@@ -69,17 +76,13 @@ class MyProstheticsEnv(ProstheticsEnv):
         cm_pos = [state_desc["misc"]["mass_center_pos"][i] - pelvis[i] for i in range(3)]
         cm_vel = state_desc["misc"]["mass_center_vel"]
         cm_acc = state_desc["misc"]["mass_center_acc"]
-        #if self.difficulty == 0:
-        #    cm_pos = cm_pos[0:2]
-        #    cm_vel = cm_vel[0:2]
-        #    cm_acc = cm_acc[0:2]
         res = res + cm_pos + cm_vel + cm_acc
 
         return np.array(res)
 
     def get_observation_space_size(self):
         if self.prosthetic == True:
-            return 181
+            return 106 if self.simple else 157
         return 167
 
     def is_done(self):

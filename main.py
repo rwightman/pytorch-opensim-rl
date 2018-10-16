@@ -234,7 +234,7 @@ def main():
             print(" Evaluation using {} episodes: mean reward {:.5f}\n".
                 format(len(eval_episode_rewards), eval_eprew))
 
-        if j % args.save_interval == 0 and save_dir != "":
+        if len(episode_rewards) and j % args.save_interval == 0 and save_dir != "":
             # A really ugly way to save a model to CPU
             save_model = actor_critic
             if args.cuda:
