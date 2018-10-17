@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from distributions import Categorical, DiagGaussian
+from distributions import Categorical, DiagGaussian, Beta
 from utils import init, init_normc_
 
 
@@ -12,7 +12,7 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, dist_output_fn=None, base_kwargs=None):
+    def __init__(self, obs_shape, action_space, beta=False, base_kwargs=None):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
@@ -29,7 +29,10 @@ class Policy(nn.Module):
             self.dist = Categorical(self.base.output_size, num_outputs)
         elif action_space.__class__.__name__ == "Box":
             num_outputs = action_space.shape[0]
-            self.dist = DiagGaussian(self.base.output_size, num_outputs, dist_output_fn)
+            if beta:
+                self.dist = Beta(self.base.output_size, num_outputs)
+            else:
+                self.dist = DiagGaussian(self.base.output_size, num_outputs)
         else:
             raise NotImplementedError
 
