@@ -67,7 +67,7 @@ def main():
     actor_critic = Policy(
         envs.observation_space.shape,
         envs.action_space,
-        beta=True,
+        beta=args.beta_dist,
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
@@ -108,6 +108,9 @@ def main():
     else:
         replay = None
 
+    action_high = torch.from_numpy(envs.action_space.high).to(device)
+    action_low = torch.from_numpy(envs.action_space.low).to(device)
+
     rollouts = RolloutStorage(args.num_steps, args.num_processes,
                         envs.observation_space.shape, envs.action_space,
                         actor_critic.recurrent_hidden_state_size)
@@ -132,8 +135,7 @@ def main():
 
             if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
                 clipped_action = torch.max(
-                    torch.min(action, torch.from_numpy(envs.action_space.high).to(device)),
-                    torch.from_numpy(envs.action_space.low).to(device))
+                    torch.min(action, action_high), action_low)
             else:
                 clipped_action = action
 
@@ -218,8 +220,7 @@ def main():
 
                 if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
                     clipped_action = torch.max(
-                        torch.min(action, torch.from_numpy(envs.action_space.high).to(device)),
-                        torch.from_numpy(envs.action_space.low).to(device))
+                        torch.min(action, action_high), action_low)
                 else:
                     clipped_action = action
 
