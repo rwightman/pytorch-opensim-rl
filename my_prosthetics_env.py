@@ -5,13 +5,79 @@ import math
 import os
 import time
 from collections import deque
+from enum import Enum
+
+
+PROJ_FULL = 0
+PROJ_NORMAL = 1
+PROJ_SIMPLE = 2
+
+
+## Values in the observation vector
+# y, vx, vy, ax, ay, rz, vrz, arz of pelvis (10 values)
+# x, y, vx, vy, ax, ay, rz, vrz, arz of head, torso, toes_l, toes_r, talus_l, talus_r (12*6 values)
+# rz, vrz, arz of ankle_l, ankle_r, back, hip_l, hip_r, knee_l, knee_r (7*3 values)
+# activation, fiber_len, fiber_vel for all muscles (3*18)
+# x, y, vx, vy, ax, ay ofg center of mass (6)
+# 8 + 9*6 + 8*3 + 3*18 + 6 = 146
+def project_obs(state_desc, proj=PROJ_FULL, prosthetic=True):
+    res = []
+
+    if proj == PROJ_SIMPLE:
+        pelvis = state_desc["body_pos"]["pelvis"][0:3]
+        # pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
+        # pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
+        res += pelvis[1:2]  # + pelvis_vel[:] + pelvis_acc[:]
+        for bp in ["talus_l", "pros_foot_r"]:
+            bp_pos = state_desc["body_pos"][bp]
+            bp_pos[0] = bp_pos[0] - pelvis[0]
+            bp_pos[2] = bp_pos[2] - pelvis[2]
+            res += bp_pos
+    else:
+        pelvis = None
+        for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
+            if prosthetic and body_part in ["toes_r", "talus_r"]:
+                if proj == PROJ_FULL:
+                    res += [0] * 12
+                continue
+            cur = []
+            cur += state_desc["body_pos"][body_part][0:3]
+            cur += state_desc["body_vel"][body_part][0:3]
+            cur += state_desc["body_acc"][body_part][0:3]
+            cur += state_desc["body_pos_rot"][body_part][2:]
+            cur += state_desc["body_vel_rot"][body_part][2:]
+            cur += state_desc["body_acc_rot"][body_part][2:]
+            if body_part == "pelvis":
+                pelvis = cur.copy()
+                res += pelvis[1:2] + pelvis[3:]
+            else:
+                cur_upd = cur.copy()
+                cur_upd[:3] = [cur[i] - pelvis[i] for i in range(3)]
+                cur_upd[9:10] = [cur[i] - pelvis[i] for i in range(9, 10)]
+                res += cur_upd
+
+    for joint in ["ankle_l", "ankle_r", "back", "hip_l", "hip_r", "knee_l", "knee_r"]:
+        res += state_desc["joint_pos"][joint]
+        res += state_desc["joint_vel"][joint]
+        res += state_desc["joint_acc"][joint]
+
+    for muscle in sorted(state_desc["muscles"].keys()):
+        res += [state_desc["muscles"][muscle]["activation"]]
+        res += [state_desc["muscles"][muscle]["fiber_length"]]
+        res += [state_desc["muscles"][muscle]["fiber_velocity"]]
+
+    cm_pos = [state_desc["misc"]["mass_center_pos"][i] - pelvis[i] for i in range(3)]
+    cm_vel = state_desc["misc"]["mass_center_vel"]
+    cm_acc = state_desc["misc"]["mass_center_acc"]
+    res = res + cm_pos + cm_vel + cm_acc
+
+    return np.array(res)
 
 
 class MyProstheticsEnv(ProstheticsEnv):
 
     def __init__(self, visualize=False, integrator_accuracy=1e-4, difficulty=0, seed=0, frame_skip=0):
-        self.mode_simple = False
-        self.mode_full = True
+        self.project_mode = PROJ_FULL
         super(MyProstheticsEnv, self).__init__(
             visualize=visualize,
             integrator_accuracy=integrator_accuracy,
@@ -26,73 +92,18 @@ class MyProstheticsEnv(ProstheticsEnv):
         self.frame_skip = frame_skip
         self.debug = False
 
-    ## Values in the observation vector
-    # y, vx, vy, ax, ay, rz, vrz, arz of pelvis (10 values)
-    # x, y, vx, vy, ax, ay, rz, vrz, arz of head, torso, toes_l, toes_r, talus_l, talus_r (12*6 values)
-    # rz, vrz, arz of ankle_l, ankle_r, back, hip_l, hip_r, knee_l, knee_r (7*3 values)
-    # activation, fiber_len, fiber_vel for all muscles (3*18)
-    # x, y, vx, vy, ax, ay ofg center of mass (6)
-    # 8 + 9*6 + 8*3 + 3*18 + 6 = 146
     def get_observation(self):
         state_desc = self.get_state_desc()
-
-        # Augmented environment from the L2R challenge
-        res = []
-
-        if self.mode_simple:
-            pelvis = state_desc["body_pos"]["pelvis"][0:3]
-            #pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
-            #pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
-            res += pelvis[1:2] #+ pelvis_vel[:] + pelvis_acc[:]
-
-            for bp in ["talus_l", "pros_foot_r"]:
-                bp_pos = state_desc["body_pos"][bp]
-                bp_pos[0] = bp_pos[0] - pelvis[0]
-                bp_pos[2] = bp_pos[2] - pelvis[2]
-                res += bp_pos
-        else:
-            pelvis = None
-            for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
-                if self.prosthetic and body_part in ["toes_r", "talus_r"]:
-                    if self.mode_full:
-                        res += [0] * 12
-                    continue
-                cur = []
-                cur += state_desc["body_pos"][body_part][0:3]
-                cur += state_desc["body_vel"][body_part][0:3]
-                cur += state_desc["body_acc"][body_part][0:3]
-                cur += state_desc["body_pos_rot"][body_part][2:]
-                cur += state_desc["body_vel_rot"][body_part][2:]
-                cur += state_desc["body_acc_rot"][body_part][2:]
-                if body_part == "pelvis":
-                    pelvis = cur.copy()
-                    res += pelvis[1:2] + pelvis[3:]
-                else:
-                    cur_upd = cur.copy()
-                    cur_upd[:3] = [cur[i] - pelvis[i] for i in range(3)]
-                    cur_upd[9:10] = [cur[i] - pelvis[i] for i in range(9, 10)]
-                    res += cur_upd
-
-        for joint in ["ankle_l", "ankle_r", "back", "hip_l", "hip_r", "knee_l", "knee_r"]:
-            res += state_desc["joint_pos"][joint]
-            res += state_desc["joint_vel"][joint]
-            res += state_desc["joint_acc"][joint]
-
-        for muscle in sorted(state_desc["muscles"].keys()):
-            res += [state_desc["muscles"][muscle]["activation"]]
-            res += [state_desc["muscles"][muscle]["fiber_length"]]
-            res += [state_desc["muscles"][muscle]["fiber_velocity"]]
-
-        cm_pos = [state_desc["misc"]["mass_center_pos"][i] - pelvis[i] for i in range(3)]
-        cm_vel = state_desc["misc"]["mass_center_vel"]
-        cm_acc = state_desc["misc"]["mass_center_acc"]
-        res = res + cm_pos + cm_vel + cm_acc
-
-        return np.array(res)
+        return project_obs(state_desc, proj=self.project_mode, prosthetic=self.prosthetic)
 
     def get_observation_space_size(self):
-        if self.prosthetic == True:
-            return 106 if self.mode_simple else (181 if self.mode_full else 157)
+        if self.prosthetic:
+            if self.project_mode == PROJ_SIMPLE:
+                return 106
+            elif self.project_mode == PROJ_FULL:
+                return 181
+            else:
+                return 157
         return 167
 
     def is_done(self):
