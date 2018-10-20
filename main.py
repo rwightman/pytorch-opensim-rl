@@ -62,13 +62,21 @@ def main():
 
     envs = make_vec_envs(
         args.env_name, args.seed, args.num_processes,
-        args.gamma, log_dir, args.add_timestep, device, False)
+        args.gamma, log_dir, args.add_timestep, device, False, frame_skip=0)
 
-    actor_critic = Policy(
-        envs.observation_space.shape,
-        envs.action_space,
-        beta=args.beta_dist,
-        base_kwargs={'recurrent': args.recurrent_policy})
+    if args.load_path:
+        actor_critic, _ob_rms = torch.load(args.load_path)
+        vec_norm = get_vec_normalize(envs)
+        if vec_norm is not None:
+            vec_norm.train()
+            vec_norm.ob_rms = _ob_rms
+        actor_critic.train()
+    else:
+        actor_critic = Policy(
+            envs.observation_space.shape,
+            envs.action_space,
+            beta=args.beta_dist,
+            base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
     if args.algo.startswith('a2c'):
@@ -134,8 +142,9 @@ def main():
                         rollouts.masks[step])
 
             if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
+                clipped_action = action.clone()
                 clipped_action = torch.max(
-                    torch.min(action, action_high), action_low)
+                    torch.min(clipped_action, action_high), action_low)
             else:
                 clipped_action = action
 

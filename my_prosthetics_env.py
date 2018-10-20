@@ -10,14 +10,16 @@ from collections import deque
 class MyProstheticsEnv(ProstheticsEnv):
 
     def __init__(self, visualize=False, integrator_accuracy=1e-4, difficulty=0, seed=0, frame_skip=0):
-        self.simple = True
+        self.mode_simple = False
+        self.mode_full = True
         super(MyProstheticsEnv, self).__init__(
             visualize=visualize,
             integrator_accuracy=integrator_accuracy,
             difficulty=difficulty,
             seed=seed)
         if difficulty == 0:
-            self.time_limit = 800  # longer time limit to reduce likelihood of diving strategy
+            self.time_limit = 600  # longer time limit to reduce likelihood of diving strategy
+        self.spec.timestep_limit = self.time_limit
         np.random.seed(seed)
         self.frame_times = deque(maxlen=100)
         self.frame_count = 0
@@ -37,7 +39,7 @@ class MyProstheticsEnv(ProstheticsEnv):
         # Augmented environment from the L2R challenge
         res = []
 
-        if self.simple:
+        if self.mode_simple:
             pelvis = state_desc["body_pos"]["pelvis"][0:3]
             #pelvis_vel = state_desc["body_vel"]["pelvis"][0:3]
             #pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
@@ -52,13 +54,14 @@ class MyProstheticsEnv(ProstheticsEnv):
             pelvis = None
             for body_part in ["pelvis", "head", "torso", "toes_l", "toes_r", "talus_l", "talus_r"]:
                 if self.prosthetic and body_part in ["toes_r", "talus_r"]:
-                    #res += [0] * 12
+                    if self.mode_full:
+                        res += [0] * 12
                     continue
                 cur = []
                 cur += state_desc["body_pos"][body_part][0:3]
                 cur += state_desc["body_vel"][body_part][0:3]
                 cur += state_desc["body_acc"][body_part][0:3]
-                cur += state_desc["body_pos_rqot"][body_part][2:]
+                cur += state_desc["body_pos_rot"][body_part][2:]
                 cur += state_desc["body_vel_rot"][body_part][2:]
                 cur += state_desc["body_acc_rot"][body_part][2:]
                 if body_part == "pelvis":
@@ -89,7 +92,7 @@ class MyProstheticsEnv(ProstheticsEnv):
 
     def get_observation_space_size(self):
         if self.prosthetic == True:
-            return 106 if self.simple else 157
+            return 106 if self.mode_simple else (181 if self.mode_full else 157)
         return 167
 
     def is_done(self):

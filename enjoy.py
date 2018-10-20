@@ -48,37 +48,21 @@ if render_func is not None:
 
 obs = env.reset()
 
-if args.env_name.find('Bullet') > -1:
-    import pybullet as p
-
-    torsoId = -1
-    for i in range(p.getNumBodies()):
-        if (p.getBodyInfo(i)[0].decode() == "torso"):
-            torsoId = i
-
 while True:
     with torch.no_grad():
         value, action, _, recurrent_hidden_states = actor_critic.act(
             obs, recurrent_hidden_states, masks, deterministic=True)
 
+    clipped_action = action
     if args.clip_action and isinstance(env.action_space, gym.spaces.Box):
         clipped_action = torch.max(torch.min(
-            action, torch.from_numpy(env.action_space.high)),
+            clipped_action, torch.from_numpy(env.action_space.high)),
             torch.from_numpy(env.action_space.low))
-    else:
-        clipped_action = action
 
     # Obser reward and next obs
     obs, reward, done, _ = env.step(clipped_action)
 
     masks.fill_(0.0 if done else 1.0)
-
-    if args.env_name.find('Bullet') > -1:
-        if torsoId > -1:
-            distance = 5
-            yaw = 0
-            humanPos, humanOrn = p.getBasePositionAndOrientation(torsoId)
-            p.resetDebugVisualizerCamera(distance, yaw, -20, humanPos)
 
     if render_func is not None:
         render_func('human')

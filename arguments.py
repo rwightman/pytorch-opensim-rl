@@ -83,6 +83,8 @@ def get_args():
                         help='enable visdom visualization')
     parser.add_argument('--port', type=int, default=8097,
                         help='port to run the server on (default: 8097)')
+    parser.add_argument('--load-path', default='',
+                        help='directory to save agent logs (default: ')
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
