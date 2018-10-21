@@ -62,7 +62,7 @@ def main():
 
     envs = make_vec_envs(
         args.env_name, args.seed, args.num_processes,
-        args.gamma, log_dir, args.add_timestep, device, False, frame_skip=0)
+        args.gamma, log_dir, args.add_timestep, device, False, frame_skip=args.frame_skip)
 
     if args.load_path:
         actor_critic, _ob_rms = torch.load(args.load_path)
