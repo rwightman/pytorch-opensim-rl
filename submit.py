@@ -14,6 +14,10 @@ from envs import VecNormalize, VecPyTorch
 from my_prosthetics_env import MyProstheticsEnv, project_obs
 
 
+class StopTheSim(Exception):
+    pass
+
+
 class ClientWrapper(MyProstheticsEnv):
 
     def __init__(self, client, token):
@@ -25,19 +29,31 @@ class ClientWrapper(MyProstheticsEnv):
         self.client = client
         self._cached_observation = self.client.env_create(token, env_id="ProstheticsEnv")
         print(self._cached_observation)
+        self.step_count = 0
 
     def step(self, action, project=True):
+        print('Step: ', self.step_count, end='. ')
         obs, reward, done, info = self.client.env_step(action.tolist())
-        print(obs)
+        if obs is not None and 'body_pos' in obs:
+            print('Pelvis: ', obs['body_pos']['pelvis'])
+        elif obs is None:
+            print('Invalid obs.')
+            return None, None, True, None
+        self.step_count += 1
         proj_obs = project_obs(obs, self.project_mode, self.prosthetic)
         return proj_obs, reward, done, info
 
     def reset(self, project=True):
+        print('Reset')
         if self._cached_observation is not None:
+            print('Returning cached')
             obs = self._cached_observation
             self._cached_observation = None
         else:
             obs = self.client.env_reset()
+        self.step_count = 0
+        if obs is None:
+            raise StopTheSim
         return project_obs(obs, self.project_mode, self.prosthetic)
 
     def close(self):
@@ -86,24 +102,28 @@ obs = env.reset()
 
 # Run a single step
 # The grader runs 3 simulations of at most 1000 steps each. We stop after the last one
+count = 0
+num_steps = 0
 while True:
-    print(obs)
-
     with torch.no_grad():
         value, action, _, recurrent_hidden_states = actor_critic.act(
             obs, recurrent_hidden_states, masks, deterministic=True)
 
     clipped_action = action
     if isinstance(ref_env.action_space, gym.spaces.Box):
-        #clipped_action += 0.05
-        clipped_action = torch.max(torch.min(
-            clipped_action, torch.from_numpy(ref_env.action_space.high)),
-            torch.from_numpy(ref_env.action_space.low))
+       clipped_action = torch.max(torch.min(
+           clipped_action, torch.from_numpy(ref_env.action_space.high)),
+           torch.from_numpy(ref_env.action_space.low))
 
-    obs, reward, done, info = env.step(clipped_action)
-    if done:
-        obs = env.reset()
-        if not obs:
-            break
+    try:
+        obs, reward, done, info = env.step(clipped_action)
+        num_steps += 1
+        if done:
+            print('Done after %d steps.' % num_steps)
+            num_steps = 0
+            count += 1
+    except StopTheSim:
+        print('Finishing.')
+        break
 
 client.submit()
