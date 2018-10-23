@@ -5,7 +5,6 @@ import math
 import os
 import time
 from collections import deque
-from enum import Enum
 
 
 PROJ_FULL = 0
