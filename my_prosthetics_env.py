@@ -5,7 +5,6 @@ import math
 import os
 import time
 from collections import deque
-from enum import Enum
 import torch
 import torch.nn.functional as F
 
