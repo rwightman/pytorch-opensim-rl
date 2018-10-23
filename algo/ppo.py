@@ -15,7 +15,8 @@ class PPO():
                  lr=None,
                  lr_schedule=None,
                  eps=None,
-                 max_grad_norm=None):
+                 max_grad_norm=None,
+                 mirror_loss=None):
 
         self.actor_critic = actor_critic
 
@@ -34,6 +35,8 @@ class PPO():
             self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, lr_schedule)
         else:
             self.scheduler = None
+
+        self.mirror_loss = mirror_loss
 
     def update(self, rollouts, update_index, _replay=None):
         if self.scheduler is not None:
@@ -73,11 +76,19 @@ class PPO():
 
                 value_loss = F.mse_loss(return_batch, values)
 
+                if self.mirror_loss is not None:
+                    mirror_loss = self.mirror_loss.calc_loss(
+                        self.actor_critic, obs_batch, recurrent_hidden_states_batch, actions_batch, masks_batch)
+                    print('mirror loss', mirror_loss)
+                else:
+                    mirror_loss = 0
+
                 self.optimizer.zero_grad()
-                (value_loss * self.value_loss_coef + action_loss -
-                 dist_entropy * self.entropy_coef).backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(),
-                                         self.max_grad_norm)
+                loss = value_loss * self.value_loss_coef + action_loss - dist_entropy * self.entropy_coef
+                if self.mirror_loss is not None:
+                    loss += 0.5 * mirror_loss
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
                 value_loss_epoch += value_loss.item()

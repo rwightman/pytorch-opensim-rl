@@ -43,7 +43,7 @@ def get_args():
                         help='ppo clip parameter (default: 0.2)')
     parser.add_argument('--clip-action', action='store_true', default=False,
                         help='clip actions')
-    parser.add_argument('--frame-skip ', type=int, default=0,
+    parser.add_argument('--frame-skip', type=int, default=0,
                         help='number of frames to skip (apply same action)')
     parser.add_argument('--sil-update-ratio', type=float, default=4.0,
                         help='sil off-policy updates per on-policy updates (default: 4.0)')

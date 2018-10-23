@@ -20,6 +20,7 @@ from rollout_storage import RolloutStorage
 from replay_storage import ReplayStorage
 from utils import get_vec_normalize
 from visualize import visdom_plot
+from my_prosthetics_env import ProsthetiscMirror
 
 args = get_args()
 
@@ -90,7 +91,8 @@ def main():
                          args.value_loss_coef, args.entropy_coef, lr=args.lr,
                          lr_schedule=args.lr_schedule,
                          eps=args.eps,
-                         max_grad_norm=args.max_grad_norm)
+                         max_grad_norm=args.max_grad_norm,
+                         mirror_loss=ProsthetiscMirror(device=device))
     elif args.algo == 'acktr':
         agent = algo.A2C_ACKTR(actor_critic, args.value_loss_coef,
                                args.entropy_coef, acktr=True)
