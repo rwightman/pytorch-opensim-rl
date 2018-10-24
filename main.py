@@ -118,10 +118,12 @@ def main():
 
     action_high = torch.from_numpy(envs.action_space.high).to(device)
     action_low = torch.from_numpy(envs.action_space.low).to(device)
+    action_mid = 0.5 * (action_high + action_low)
 
-    rollouts = RolloutStorage(args.num_steps, args.num_processes,
-                        envs.observation_space.shape, envs.action_space,
-                        actor_critic.recurrent_hidden_state_size)
+    rollouts = RolloutStorage(
+        args.num_steps, args.num_processes,
+        envs.observation_space.shape, envs.action_space,
+        actor_critic.recurrent_hidden_state_size)
 
     obs = envs.reset()
     rollouts.obs[0].copy_(obs)
@@ -143,6 +145,11 @@ def main():
 
             if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
                 clipped_action = action.clone()
+                if args.shift_action:
+                    # FIXME experimenting with this, so far resulting in
+                    # faster learning when clipping guassian continuous
+                    # output (vs leaving centred at 0 and unscaled)
+                    clipped_action = 0.5 * clipped_action + action_mid
                 clipped_action = torch.max(
                     torch.min(clipped_action, action_high), action_low)
             else:
@@ -227,11 +234,15 @@ def main():
                     _, action, _, eval_recurrent_hidden_states = actor_critic.act(
                         obs, eval_recurrent_hidden_states, eval_masks, deterministic=True)
 
+                clipped_action = action
                 if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
+                    if args.shift_action:
+                        # FIXME experimenting with this, so far resulting in
+                        # faster learning when clipping guassian continuous
+                        # output (vs leaving centred at 0 and unscaled)
+                        clipped_action = 0.5 * clipped_action + action_mid
                     clipped_action = torch.max(
-                        torch.min(action, action_high), action_low)
-                else:
-                    clipped_action = action
+                        torch.min(clipped_action, action_high), action_low)
 
                 obs, reward, done, infos = eval_envs.step(clipped_action)
 
