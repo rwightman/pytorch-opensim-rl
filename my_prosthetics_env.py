@@ -28,7 +28,7 @@ def project_obs(state_desc, proj=PROJ_FULL, prosthetic=True):
         # pelvis_acc = state_desc["body_acc"]["pelvis"][0:3]
         res += pelvis[1:2]  # + pelvis_vel[:] + pelvis_acc[:]
         for bp in ["talus_l", "pros_foot_r"]:
-            bp_pos = state_desc["body_pos"][bp]
+            bp_pos = state_desc["body_pos"][bp].copy()
             bp_pos[0] = bp_pos[0] - pelvis[0]
             bp_pos[2] = bp_pos[2] - pelvis[2]
             res += bp_pos

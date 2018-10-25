@@ -237,9 +237,6 @@ def main():
                 clipped_action = action
                 if args.clip_action and isinstance(envs.action_space, gym.spaces.Box):
                     if args.shift_action:
-                        # FIXME experimenting with this, so far resulting in
-                        # faster learning when clipping guassian continuous
-                        # output (vs leaving centred at 0 and unscaled)
                         clipped_action = 0.5 * clipped_action + action_mid
                     clipped_action = torch.max(
                         torch.min(clipped_action, action_high), action_low)
