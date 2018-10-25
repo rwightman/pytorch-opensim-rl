@@ -1,10 +1,12 @@
-# PyTorch OpenSim Reinforcement Learning for CrowdAI Prosthetics Environment
+# PyTorch Reinforcement Learning for OpenSim Environments
 
 This is my code for experimenting with the CrowdAI Prosthetics Challenge (https://www.crowdai.org/challenges/nips-2018-ai-for-prosthetics-challenge)
 
 The reinforcement learning codebase is based upon Ilya Kostrikov's awesome work (https://github.com/ikostrikov/pytorch-a2c-ppo-acktr)
 
 As this is part of my learning process for continuous control with deep reinforcement learning, there are likely to be some issues.
+
+All experiments were performed with PPO or PPO w/ self-improvement learning w/ 16 vector'd environments running in parallel. Keep in mind, the simulator is VERY slow so expect to wait a long time for decent results (days) -- even if you happen to have a kick ass machine.
 
 Added:
  * support for the OpenSim Gym-like environments with Ilya's RL codebase
@@ -20,9 +22,7 @@ Added:
  Setup your environment as per https://github.com/stanfordnmbl/osim-rl#getting-started
  
  ## Give It a Go
- 
- Keep in mind, the simulator is VERY slow.
- 
+  
  Unclipped -- trains much faster but not clear what OpenSim is doing:
  `main.py --algo ppo --env-name osim.Prosthetics --lr 7e-4 --num-steps 1000 --use-gae --ppo-epoch 10`
  
